@@ -2,7 +2,11 @@ import argparse
 import collections
 import csv
 import datetime
+import math
 import os
+import random
+
+from recommender.utils import AppendSubset
 
 try:
     from tqdm import tqdm
@@ -14,6 +18,8 @@ EVENTS_COUNT = 14614386
 PURCHASES_COUNT = 188713
 
 CUSTOMER_IDS_FILE = 'customer_ids.txt'
+CUSTOMER_IDS_SUBSET_FILE = 'customer_ids.{subset}.txt'
+REMAINING_SUBSET_NAME = 'train'
 PRODUCT_IDS_FILE = 'product_ids.txt'
 SERIES_CSV_FILE = 'series.csv'
 SERIES_INDEX_FILE = 'series.index.csv'
@@ -39,6 +45,7 @@ def process_data(
         events_data,
         purchases_data,
         output_dir,
+        subsets=None,
         min_events=DEFAULT_MIN_EVENTS,
         min_purchases=DEFAULT_MIN_PURCHASES,
         min_products=DEFAULT_MIN_PRODUCTS,
@@ -46,39 +53,43 @@ def process_data(
     """
     Preprocess data for training.
     """
-    try:
-        customer_ids = get_customers(
-            events_data=events_data,
-            purchases_data=purchases_data,
-            min_events=min_events,
-            min_purchases=min_purchases,
-        )
-        write_ids(
+    subsets = subsets or []
+    customer_ids = get_customers(
+        events_data=events_data,
+        purchases_data=purchases_data,
+        min_events=min_events,
+        min_purchases=min_purchases,
+    )
+    product_ids = get_products(
+        events_data=events_data,
+        purchases_data=purchases_data,
+        customer_ids=customer_ids,
+        min_products=min_products,
+    )
+    encode_series(
+        events_data=events_data,
+        purchases_data=purchases_data,
+        customer_ids=customer_ids,
+        product_ids=product_ids,
+        output_dir=output_dir,
+    )
+    write_ids(
+        id_list=customer_ids,
+        output_dir=output_dir,
+        filename=CUSTOMER_IDS_FILE,
+    )
+    if subsets:
+        write_subsets(
             id_list=customer_ids,
             output_dir=output_dir,
-            filename=CUSTOMER_IDS_FILE,
+            filename=CUSTOMER_IDS_SUBSET_FILE,
+            subsets=subsets,
         )
-        product_ids = get_products(
-            events_data=events_data,
-            purchases_data=purchases_data,
-            customer_ids=customer_ids,
-            min_products=min_products,
-        )
-        write_ids(
-            id_list=product_ids,
-            output_dir=output_dir,
-            filename=PRODUCT_IDS_FILE,
-        )
-        encode_series(
-            events_data=events_data,
-            purchases_data=purchases_data,
-            customer_ids=customer_ids,
-            product_ids=product_ids,
-            output_dir=output_dir,
-        )
-    finally:
-        events_data.close()
-        purchases_data.close()
+    write_ids(
+        id_list=product_ids,
+        output_dir=output_dir,
+        filename=PRODUCT_IDS_FILE,
+    )
 
 
 def get_customers(events_data, purchases_data, min_events, min_purchases):
@@ -116,6 +127,7 @@ def get_customers(events_data, purchases_data, min_events, min_purchases):
         f'{min_purchases} purchases minimum'
     )
     customer_ids = list(events_ids & purchases_ids)
+    random.shuffle(customer_ids)
     print(f'Retrieved {len(customer_ids)} customer IDs in total.')
     return customer_ids
 
@@ -198,9 +210,29 @@ def write_ids(id_list, output_dir, filename):
     """
     Write IDs to a text file.
     """
+    print(f'Writing {filename}')
     with open(os.path.join(output_dir, filename), mode='w') as file:
         for line in id_list:
             file.write(f'{line}\n')
+
+
+def write_subsets(id_list, output_dir, filename, subsets):
+    total_count = len(id_list)
+    remaining_ids = id_list
+    for subset_name, subset_size in subsets:
+        subset_length = math.ceil(subset_size * total_count)
+        subset_list = remaining_ids[:subset_length]
+        remaining_ids = remaining_ids[subset_length:]
+        write_ids(
+            id_list=subset_list,
+            output_dir=output_dir,
+            filename=filename.format(subset=subset_name),
+        )
+    write_ids(
+        id_list=remaining_ids,
+        output_dir=output_dir,
+        filename=filename.format(subset=REMAINING_SUBSET_NAME),
+    )
 
 
 def encode_series(
@@ -347,6 +379,14 @@ if __name__ == '__main__':
         dest='min_products',
     )
     parser.add_argument(
+        '-s', '--subset',
+        action=AppendSubset,
+        nargs=2,
+        help='specify additional subsets and their size',
+        metavar=('NAME', 'SIZE'),
+        dest='subsets',
+    )
+    parser.add_argument(
         '-o', '--output-dir',
         required=True,
         dest='output_dir',
@@ -360,11 +400,16 @@ if __name__ == '__main__':
         type=argparse.FileType(mode='r'),
     )
     args = parser.parse_args()
-    process_data(
-        output_dir=args.output_dir,
-        events_data=args.events_data,
-        purchases_data=args.purchases_data,
-        min_events=args.min_events,
-        min_purchases=args.min_purchases,
-        min_products=args.min_products,
-    )
+    try:
+        process_data(
+            output_dir=args.output_dir,
+            events_data=args.events_data,
+            purchases_data=args.purchases_data,
+            subsets=args.subsets,
+            min_events=args.min_events,
+            min_purchases=args.min_purchases,
+            min_products=args.min_products,
+        )
+    finally:
+        args.events_data.close()
+        args.purchases_data.close()
