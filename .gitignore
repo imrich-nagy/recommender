@@ -1,4 +1,7 @@
 /data/
+/logs/
+/models/
+/model.png
 
 # OS
 .DS_Store

@@ -9,7 +9,16 @@ DATA_FILES = \
 	./data/processed/customer_ids.val.txt
 OUTPUT_DIR = ./data/processed/
 
+all: data train
+
 data: $(DATA_FILES)
+
+train:
+	pipenv run python -m recommender.train \
+		--train-subset train \
+		--val-subset val \
+		--models-dir ./models/ \
+		./data/processed/
 
 setup: $(CREATE_DIRS)
 
@@ -27,4 +36,4 @@ $(CREATE_DIRS):
 jupyter: $(DATA_FILES)
 	pipenv run jupyter notebook
 
-.PHONY: data jupyter setup
+.PHONY: all data train jupyter setup
