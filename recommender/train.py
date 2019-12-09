@@ -1,5 +1,6 @@
 import argparse
 import csv
+import math
 import os
 import random
 import traceback
@@ -9,6 +10,7 @@ import warnings
 from tensorflow.keras import Input, layers, Model
 from tensorflow.keras.callbacks import Callback, ModelCheckpoint
 from tensorflow.keras.metrics import Precision
+from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import plot_model
 import numpy
 
@@ -25,6 +27,7 @@ from recommender.data import (
 DEFAULT_RECOMMENDATION_COUNT = 10
 DEFAULT_EMBEDDING_SIZE = 256
 DEFAULT_ENCODER_SIZE = 256
+DEFAULT_BATCH_SIZE = 32
 
 
 def train(
@@ -34,6 +37,7 @@ def train(
         recommendation_count=DEFAULT_RECOMMENDATION_COUNT,
         embedding_size=DEFAULT_EMBEDDING_SIZE,
         encoder_size=DEFAULT_ENCODER_SIZE,
+        batch_size=DEFAULT_BATCH_SIZE,
         checkpoint_dir=None,
 ):
     product_count = get_product_count(data_dir=data_dir)
@@ -42,6 +46,7 @@ def train(
         target_count=recommendation_count,
         product_count=product_count,
         subset=training_subset,
+        batch_size=batch_size,
     )
     if validation_subset:
         validation_data, validation_steps = get_data(
@@ -78,10 +83,6 @@ def train(
                 filepath=os.path.join(checkpoint_dir, 'last-epoch.model'),
             ),
             ModelCheckpoint(
-                filepath=os.path.join(checkpoint_dir, 'last-100s.model'),
-                save_freq=100,
-            ),
-            ModelCheckpoint(
                 filepath=os.path.join(checkpoint_dir, 'best-loss.model'),
                 save_best_only=True,
             ),
@@ -113,7 +114,7 @@ def get_product_count(data_dir):
     return len(product_ids) + 1
 
 
-def get_data(data_dir, target_count, product_count, subset=None):
+def get_data(data_dir, target_count, product_count, subset=None, batch_size=1):
     if subset:
         filename = CUSTOMER_IDS_SUBSET_FILE.format(subset=subset)
     else:
@@ -125,14 +126,16 @@ def get_data(data_dir, target_count, product_count, subset=None):
             row['customer_id']: (row['start_offset'], row['series_length'])
             for row in csv.DictReader(file)
         }
-    samples = get_batches(
+    batches = get_batches(
         customer_ids=customer_ids,
         series_index=series_index,
         data_dir=data_dir,
         target_count=target_count,
         product_count=product_count,
+        batch_size=batch_size,
     )
-    return samples, len(customer_ids)
+    step_count = math.ceil(len(customer_ids) / batch_size)
+    return batches, step_count
 
 
 def get_batches(
@@ -141,50 +144,60 @@ def get_batches(
         data_dir,
         target_count,
         product_count,
+        batch_size,
 ):
     line_cache = {}
     while True:
-        random.shuffle(customer_ids)
-        for customer_id in customer_ids:
-            sample = get_sample(
-                customer_id=customer_id,
-                series_index=series_index,
-                data_dir=data_dir,
-                target_count=target_count,
-                product_count=product_count,
-                line_cache=line_cache,
+        samples = get_samples(
+            customer_ids=customer_ids,
+            series_index=series_index,
+            data_dir=data_dir,
+            target_count=target_count,
+            product_count=product_count,
+            line_cache=line_cache,
+        )
+        while True:
+            batch_samples = list(itertools.islice(samples, batch_size))
+            if not batch_samples:
+                break
+            product_inputs, details_inputs, outputs = zip(*batch_samples)
+            batch_inputs = (
+                pad_sequences(sequences=product_inputs),
+                pad_sequences(sequences=details_inputs),
             )
-            yield sample
+            yield batch_inputs, numpy.array(outputs)
 
 
-def get_sample(
-        customer_id,
+def get_samples(
+        customer_ids,
         series_index,
         data_dir,
         target_count,
         product_count,
         line_cache,
 ):
-    series = get_series(
-        customer_id=customer_id,
-        series_index=series_index,
-        data_dir=data_dir,
-        line_cache=line_cache,
-    )
-    target_index = get_target_index(
-        series=series,
-        target_count=target_count,
-    )
-    inputs = get_inputs(
-        series=series,
-        target_index=target_index,
-    )
-    outputs = get_outputs(
-        series=series,
-        target_index=target_index,
-        product_count=product_count,
-    )
-    return inputs, outputs
+    random.shuffle(customer_ids)
+    for customer_id in customer_ids:
+        series = get_series(
+            customer_id=customer_id,
+            series_index=series_index,
+            data_dir=data_dir,
+            line_cache=line_cache,
+        )
+        target_index = get_target_index(
+            series=series,
+            target_count=target_count,
+        )
+        product_inputs, details_inputs = get_inputs(
+            series=series,
+            target_index=target_index,
+        )
+        outputs = get_outputs(
+            series=series,
+            target_index=target_index,
+            product_count=product_count,
+        )
+        yield product_inputs, details_inputs, outputs
 
 
 def get_series(customer_id, series_index, data_dir, line_cache):
@@ -221,10 +234,9 @@ def get_target_index(series, target_count):
 def get_inputs(series, target_index):
     input_series = series[:target_index]
     if not input_series:
-        details_inputs = [(0, 0, -1)]
         return (
-            numpy.zeros(shape=(1, 1)),
-            numpy.array(details_inputs)[None],
+            numpy.zeros(shape=1),
+            numpy.zeros(shape=(1, 3)),
         )
     product_inputs = []
     details_inputs = []
@@ -236,8 +248,8 @@ def get_inputs(series, target_index):
         is_purchase = int(step['is_purchase'])
         details_inputs.append((relative_time, price, is_purchase))
     return (
-        numpy.array(product_inputs)[None],
-        numpy.array(details_inputs)[None],
+        numpy.array(product_inputs),
+        numpy.array(details_inputs),
     )
 
 
@@ -248,7 +260,7 @@ def get_outputs(series, target_index, product_count):
     ]
     outputs = numpy.zeros(shape=product_count)
     outputs[targets] = 1
-    return outputs[None]
+    return outputs
 
 
 def create_model(product_count, embedding_size, encoder_size):
@@ -305,6 +317,13 @@ if __name__ == '__main__':
         dest='encoder_size',
     )
     parser.add_argument(
+        '-b', '--batch-size',
+        default=DEFAULT_BATCH_SIZE,
+        type=int,
+        help='training batch size',
+        dest='batch_size',
+    )
+    parser.add_argument(
         '-r', '--recommendations',
         default=DEFAULT_RECOMMENDATION_COUNT,
         type=int,
@@ -335,5 +354,6 @@ if __name__ == '__main__':
         recommendation_count=args.recommendation_count,
         embedding_size=args.embedding_size,
         encoder_size=args.encoder_size,
+        batch_size=args.batch_size,
         checkpoint_dir=args.checkpoint_dir,
     )
