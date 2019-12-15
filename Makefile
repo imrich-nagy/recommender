@@ -9,6 +9,14 @@ DATA_FILES = \
 	./data/processed/customer_ids.val.txt
 OUTPUT_DIR = ./data/processed/
 
+TRAIN_ARGS = \
+	--train-subset train \
+	--val-subset val \
+	--models-dir ./models/ \
+	--log-dir ./logs/ \
+	./data/processed/
+
+
 all: data train
 
 data: $(CREATE_DIRS)
@@ -20,12 +28,16 @@ data: $(CREATE_DIRS)
 		./data/raw/purchases_train.csv
 
 train:
-	pipenv run python -m recommender.train \
-		--train-subset train \
-		--val-subset val \
-		--models-dir ./models/ \
-		--log-dir ./logs/ \
-		./data/processed/
+	pipenv run python -m recommender.train $(TRAIN_ARGS)
+
+train-gpu:
+	docker run --rm --interactive --tty \
+		--gpus all \
+		--workdir /home \
+		--volume "$(shell pwd)":/home \
+		--user "$(shell id -u)":"$(shell id -g)" \
+		tensorflow/tensorflow:2.0.0-gpu-py3 \
+		python -m recommender.train $(TRAIN_ARGS)
 
 setup: $(CREATE_DIRS)
 
