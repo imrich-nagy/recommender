@@ -412,15 +412,18 @@ if __name__ == '__main__':
     parser.add_argument(
         '-o', '--output-dir',
         required=True,
+        help='processed data directory',
         dest='output_dir',
     )
     parser.add_argument(
         'events_data',
         type=argparse.FileType(mode='r'),
+        help='path to raw data for events',
     )
     parser.add_argument(
         'purchases_data',
         type=argparse.FileType(mode='r'),
+        help='path to raw data for purchases',
     )
     args = parser.parse_args()
     try:

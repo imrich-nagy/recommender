@@ -99,6 +99,7 @@ def get_data(
         view_weight,
         subset=None,
         batch_size=1,
+        do_filter=True,
 ):
     with open(os.path.join(data_dir, SERIES_INDEX_FILE), mode='r') as file:
         series_index = {
@@ -106,13 +107,13 @@ def get_data(
             for row in csv.DictReader(file)
         }
     line_cache = {}
-    print(f'Filtering customer IDs in subset "{subset}"...')
     customer_ids = list(get_customer_ids(
         series_index=series_index,
         data_dir=data_dir,
         target_count=target_count,
         line_cache=line_cache,
         subset=subset,
+        do_filter=do_filter,
     ))
     print(f'Found {len(customer_ids)} IDs in subset "{subset}"')
     batches = get_batches(
@@ -135,7 +136,10 @@ def get_customer_ids(
         target_count,
         line_cache,
         subset=None,
+        do_filter=True,
 ):
+    if do_filter:
+        print(f'Filtering customer IDs in subset "{subset}"...')
     if subset:
         filename = CUSTOMER_IDS_SUBSET_FILE.format(subset=subset)
     else:
@@ -143,18 +147,21 @@ def get_customer_ids(
     with open(os.path.join(data_dir, filename), mode='r') as file:
         for line in file:
             customer_id = line.rstrip('\n')
-            series = get_series(
-                customer_id=customer_id,
-                series_index=series_index,
-                data_dir=data_dir,
-                line_cache=line_cache,
-            )
-            target_index = get_target_index(
-                series=series,
-                target_count=target_count,
-            )
-            if target_index > 0:
+            if not do_filter:
                 yield customer_id
+            else:
+                series = get_series(
+                    customer_id=customer_id,
+                    series_index=series_index,
+                    data_dir=data_dir,
+                    line_cache=line_cache,
+                )
+                target_index = get_target_index(
+                    series=series,
+                    target_count=target_count,
+                )
+                if target_index > 0:
+                    yield customer_id
 
 
 def get_batches(
@@ -255,6 +262,11 @@ def get_target_index(series, target_count):
 
 
 def get_inputs(series, target_index):
+    if target_index == 0:
+        return (
+            numpy.zeros(shape=0),
+            numpy.zeros(shape=(0, 3)),
+        )
     input_series = series[:target_index]
     product_inputs = []
     details_inputs = []
@@ -501,7 +513,10 @@ if __name__ == '__main__':
         help='training logs directory',
         dest='log_dir',
     )
-    parser.add_argument('data_dir')
+    parser.add_argument(
+        'data_dir',
+        help='processed data directory'
+    )
     args = parser.parse_args()
     train(
         data_dir=args.data_dir,

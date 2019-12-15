@@ -39,6 +39,12 @@ train-gpu:
 		tensorflow/tensorflow:2.0.0-gpu-py3 \
 		python -m recommender.train $(TRAIN_ARGS)
 
+test:
+	pipenv run python -m recommender.test \
+		--train-subset train \
+		--test-subset test \
+		./data/processed
+
 setup: $(CREATE_DIRS)
 
 $(DATA_FILES): data
