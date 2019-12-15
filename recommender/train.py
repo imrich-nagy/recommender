@@ -315,7 +315,7 @@ def get_model(
     ]
     model.compile(
         optimizer='adam',
-        loss='cosine_similarity',
+        loss='categorical_crossentropy',
         metrics=metrics,
     )
     time = datetime.datetime.now().isoformat(sep='-', timespec='seconds')
