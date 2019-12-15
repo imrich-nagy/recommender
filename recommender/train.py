@@ -100,17 +100,21 @@ def get_data(
         subset=None,
         batch_size=1,
 ):
-    if subset:
-        filename = CUSTOMER_IDS_SUBSET_FILE.format(subset=subset)
-    else:
-        filename = CUSTOMER_IDS_FILE
-    with open(os.path.join(data_dir, filename), mode='r') as file:
-        customer_ids = file.read().splitlines()
     with open(os.path.join(data_dir, SERIES_INDEX_FILE), mode='r') as file:
         series_index = {
             row['customer_id']: (row['start_offset'], row['series_length'])
             for row in csv.DictReader(file)
         }
+    line_cache = {}
+    print(f'Filtering customer IDs in subset "{subset}"...')
+    customer_ids = list(get_customer_ids(
+        series_index=series_index,
+        data_dir=data_dir,
+        target_count=target_count,
+        line_cache=line_cache,
+        subset=subset,
+    ))
+    print(f'Found {len(customer_ids)} IDs in subset "{subset}"')
     batches = get_batches(
         customer_ids=customer_ids,
         series_index=series_index,
@@ -119,9 +123,38 @@ def get_data(
         product_count=product_count,
         view_weight=view_weight,
         batch_size=batch_size,
+        line_cache=line_cache,
     )
     step_count = math.ceil(len(customer_ids) / batch_size)
     return batches, step_count
+
+
+def get_customer_ids(
+        series_index,
+        data_dir,
+        target_count,
+        line_cache,
+        subset=None,
+):
+    if subset:
+        filename = CUSTOMER_IDS_SUBSET_FILE.format(subset=subset)
+    else:
+        filename = CUSTOMER_IDS_FILE
+    with open(os.path.join(data_dir, filename), mode='r') as file:
+        for line in file:
+            customer_id = line.rstrip('\n')
+            series = get_series(
+                customer_id=customer_id,
+                series_index=series_index,
+                data_dir=data_dir,
+                line_cache=line_cache,
+            )
+            target_index = get_target_index(
+                series=series,
+                target_count=target_count,
+            )
+            if target_index > 0:
+                yield customer_id
 
 
 def get_batches(
@@ -132,8 +165,8 @@ def get_batches(
         product_count,
         view_weight,
         batch_size,
+        line_cache,
 ):
-    line_cache = {}
     while True:
         samples = get_samples(
             customer_ids=customer_ids,
@@ -223,11 +256,6 @@ def get_target_index(series, target_count):
 
 def get_inputs(series, target_index):
     input_series = series[:target_index]
-    if not input_series:
-        return (
-            numpy.zeros(shape=1),
-            numpy.zeros(shape=(1, 3)),
-        )
     product_inputs = []
     details_inputs = []
     time_offset = float(input_series[-1]['timestamp'])
