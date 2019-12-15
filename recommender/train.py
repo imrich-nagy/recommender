@@ -1,6 +1,7 @@
 import argparse
 import csv
 import datetime
+import functools
 import math
 import os
 import random
@@ -64,50 +65,14 @@ def train(
     else:
         validation_data = None
         validation_steps = None
-    model = create_model(
+    model, callbacks = get_model(
+        recommendation_count=recommendation_count,
         product_count=product_count,
         embedding_size=embedding_size,
         encoder_size=encoder_size,
+        log_dir=log_dir,
+        checkpoint_dir=checkpoint_dir,
     )
-    save_model_diagram(model=model)
-    top_k_metric = f'precision_top_{recommendation_count}'
-    metrics = [
-        MaskedPrecision(top_k=1, name='precision'),
-        MaskedPrecision(top_k=recommendation_count, name=top_k_metric),
-    ]
-    model.compile(
-        optimizer='adam',
-        loss='cosine_similarity',
-        metrics=metrics,
-    )
-    time = datetime.datetime.now().isoformat(sep=' ', timespec='seconds')
-    callbacks = [
-        DiagramCallback(),
-    ]
-    if log_dir:
-        callbacks.append(
-            CSVLogger(filename=os.path.join(log_dir, f'{time}.csv')),
-        )
-    if checkpoint_dir:
-        callbacks += [
-            ModelCheckpoint(
-                filepath=os.path.join(checkpoint_dir, f'{time}-latest'),
-            ),
-            ModelCheckpoint(
-                filepath=os.path.join(checkpoint_dir, f'{time}-best-loss'),
-                save_best_only=True,
-            ),
-            ModelCheckpoint(
-                filepath=os.path.join(checkpoint_dir, f'{time}-best-prec'),
-                monitor='precision',
-                save_best_only=True,
-            ),
-            ModelCheckpoint(
-                filepath=os.path.join(checkpoint_dir, f'{time}-best-topk'),
-                monitor=top_k_metric,
-                save_best_only=True,
-            ),
-        ]
     try:
         model.fit_generator(
             generator=training_data,
@@ -118,8 +83,7 @@ def train(
             validation_steps=validation_steps,
         )
     except KeyboardInterrupt:
-        pass
-    model.summary()
+        print('Training stopped manually.')
 
 
 def get_product_count(data_dir):
@@ -291,6 +255,40 @@ def get_outputs(series, target_index, product_count, view_weight):
     return outputs / numpy.sum(outputs)
 
 
+def get_model(
+        recommendation_count,
+        product_count,
+        embedding_size,
+        encoder_size,
+        log_dir,
+        checkpoint_dir,
+):
+    model = create_model(
+        product_count=product_count,
+        embedding_size=embedding_size,
+        encoder_size=encoder_size,
+    )
+    top_k_metric = f'precision_top_{recommendation_count}'
+    metrics = [
+        MaskedPrecision(top_k=1, name='precision'),
+        MaskedPrecision(top_k=recommendation_count, name=top_k_metric),
+    ]
+    model.compile(
+        optimizer='adam',
+        loss='cosine_similarity',
+        metrics=metrics,
+    )
+    time = datetime.datetime.now().isoformat(sep='-', timespec='seconds')
+    callbacks = get_callbacks(
+        time=time,
+        log_dir=log_dir,
+        checkpoint_dir=checkpoint_dir,
+        top_k_metric=top_k_metric,
+    )
+    save_model_diagram(model=model, time=time, log_dir=log_dir)
+    return model, callbacks
+
+
 def create_model(product_count, embedding_size, encoder_size):
     product_input = Input(shape=(None,), name='products')
     details_input = Input(shape=(None, 3), name='details')
@@ -331,27 +329,59 @@ def create_model(product_count, embedding_size, encoder_size):
     )
 
 
-def save_model_diagram(model):
+def get_callbacks(time, log_dir=None, checkpoint_dir=None, top_k_metric=None):
+    callbacks = [
+        SummaryCallback(time=time, log_dir=log_dir),
+    ]
+    if log_dir:
+        logger = CSVLogger(filename=os.path.join(log_dir, f'{time}-log.csv'))
+        callbacks.append(logger)
+    if checkpoint_dir:
+        callbacks += [
+            ModelCheckpoint(
+                filepath=os.path.join(checkpoint_dir, f'{time}-latest'),
+            ),
+            ModelCheckpoint(
+                filepath=os.path.join(checkpoint_dir, f'{time}-best-loss'),
+                save_best_only=True,
+            ),
+            ModelCheckpoint(
+                filepath=os.path.join(checkpoint_dir, f'{time}-best-prec'),
+                monitor='precision',
+                save_best_only=True,
+            ),
+        ]
+        if top_k_metric:
+            top_k_checkpoint = ModelCheckpoint(
+                filepath=os.path.join(checkpoint_dir, f'{time}-best-topk'),
+                monitor=top_k_metric,
+                save_best_only=True,
+            )
+            callbacks.append(top_k_checkpoint)
+    return callbacks
+
+
+def save_model_diagram(model, time, log_dir):
     try:
         plot_model(
-            to_file='model.png',
+            to_file=os.path.join(log_dir, f'model-{time}.png'),
             model=model,
         )
         plot_model(
-            to_file='model-full.png',
+            to_file=os.path.join(log_dir, f'model-{time}-simple.png'),
             model=model,
-            expand_nested=True,
+            show_layer_names=False,
         )
         plot_model(
-            to_file='model-shapes.png',
+            to_file=os.path.join(log_dir, f'model-{time}-full.png'),
             model=model,
             show_shapes=True,
         )
         plot_model(
-            to_file='model-shapes-full.png',
+            to_file=os.path.join(log_dir, f'model-{time}-simple-full.png'),
             model=model,
             show_shapes=True,
-            expand_nested=True,
+            show_layer_names=False,
         )
     except ImportError as error:
         traceback.print_tb(tb=error.__traceback__)
@@ -367,16 +397,23 @@ class MaskedPrecision(Precision):
         )
 
 
-class DiagramCallback(Callback):
+class SummaryCallback(Callback):
 
-    def __init__(self):
-        super(DiagramCallback, self).__init__()
-        self.saved = False
+    def __init__(self, time, log_dir=None):
+        super(SummaryCallback, self).__init__()
+        self.time = time
+        self.log_dir = log_dir
 
-    def on_train_batch_end(self, batch, logs=None):
-        if not self.saved:
-            save_model_diagram(model=self.model)
-            self.saved = True
+    def on_train_begin(self, logs=None):
+        if self.log_dir:
+            summary_path = os.path.join(
+                self.log_dir,
+                f'{self.time}-summary.txt',
+            )
+            with open(summary_path, mode='w') as file:
+                print_fn = functools.partial(print, file=file)
+                self.model.summary(print_fn=print_fn)
+        self.model.summary()
 
 
 if __name__ == '__main__':
