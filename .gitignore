@@ -1,7 +1,7 @@
 /data/
 /logs/
 /models/
-/model.png
+/model*.png
 
 # OS
 .DS_Store

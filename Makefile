@@ -11,18 +11,7 @@ OUTPUT_DIR = ./data/processed/
 
 all: data train
 
-data: $(DATA_FILES)
-
-train:
-	pipenv run python -m recommender.train \
-		--train-subset train \
-		--val-subset val \
-		--models-dir ./models/ \
-		./data/processed/
-
-setup: $(CREATE_DIRS)
-
-$(DATA_FILES): $(CREATE_DIRS)
+data: $(CREATE_DIRS)
 	pipenv run python -m recommender.data \
 		--output-dir $(OUTPUT_DIR) \
 		--subset val 0.05 \
@@ -30,10 +19,22 @@ $(DATA_FILES): $(CREATE_DIRS)
 		./data/raw/events_train.csv \
 		./data/raw/purchases_train.csv
 
+train:
+	pipenv run python -m recommender.train \
+		--train-subset train \
+		--val-subset val \
+		--models-dir ./models/ \
+		--log-dir ./logs/ \
+		./data/processed/
+
+setup: $(CREATE_DIRS)
+
+$(DATA_FILES): data
+
 $(CREATE_DIRS):
 	mkdir -p $(CREATE_DIRS)
 
-jupyter: $(DATA_FILES)
+jupyter:
 	pipenv run jupyter notebook
 
 .PHONY: all data train jupyter setup

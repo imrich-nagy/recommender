@@ -97,29 +97,29 @@ def get_customers(events_data, purchases_data, min_events, min_purchases):
     Get IDs of customers that meet the minimum required events and purchases.
     """
     seek_beginning(events_data, purchases_data)
-    events_counter = count_customers(
+    events_dict = get_product_sets(
         file=events_data,
         total=EVENTS_COUNT,
         desc='Retrieving customer IDs from events',
     )
-    print(f'{len(events_counter)} customer IDs found in events.')
-    purchases_counter = count_customers(
+    print(f'{len(events_dict)} customer IDs found in events.')
+    purchases_dict = get_product_sets(
         file=purchases_data,
         total=PURCHASES_COUNT,
         desc='Retrieving customer IDs from purchases',
     )
-    print(f'{len(purchases_counter)} customer IDs found in purchases.')
-    total_counter = events_counter + purchases_counter
-    events_ids = filter_counts(
-        counter=total_counter,
+    print(f'{len(purchases_dict)} customer IDs found in purchases.')
+    total_dict = merge_product_sets(events_dict, purchases_dict)
+    events_ids = filter_sets(
+        sets_dict=total_dict,
         min_count=min_events,
     )
     print(
         f'{len(events_ids)} customers are above '
         f'{min_events} events minimum'
     )
-    purchases_ids = filter_counts(
-        counter=purchases_counter,
+    purchases_ids = filter_sets(
+        sets_dict=purchases_dict,
         min_count=min_purchases,
     )
     print(
@@ -132,9 +132,9 @@ def get_customers(events_data, purchases_data, min_events, min_purchases):
     return customer_ids
 
 
-def count_customers(file, total=None, desc=None):
+def get_product_sets(file, total=None, desc=None):
     """
-    Count occurrences of distinct customer IDs.
+    Get set of distinct product IDs for each customer.
     """
     reader = tqdm(
         csv.DictReader(file),
@@ -142,9 +142,32 @@ def count_customers(file, total=None, desc=None):
         total=total,
         dynamic_ncols=True,
     )
-    customer_ids = (row['customer_id'] for row in reader)
-    counter = collections.Counter(customer_ids)
-    return counter
+    customer_dict = {}
+    for row in reader:
+        customer_id = row['customer_id']
+        if customer_id not in customer_dict:
+            customer_dict[customer_id] = set()
+        customer_dict[customer_id].add(row['product_id'])
+    return customer_dict
+
+
+def merge_product_sets(*set_dicts):
+    total_dict = {}
+    for set_dict in set_dicts:
+        for key, value in set_dict.items():
+            if key not in total_dict:
+                total_dict[key] = value
+            else:
+                total_dict[key] |= value
+    return total_dict
+
+
+def filter_sets(sets_dict, min_count):
+    counts_dict = {key: len(value) for key, value in sets_dict.items()}
+    return filter_counts(
+        counter=counts_dict,
+        min_count=min_count,
+    )
 
 
 def get_products(events_data, purchases_data, customer_ids, min_products):
@@ -182,7 +205,7 @@ def get_products(events_data, purchases_data, customer_ids, min_products):
 
 def count_products(file, customer_ids, total=None, desc=None):
     """
-    Count occurrences of distinct product IDs for specified customers.
+    Count occurrences of each product ID for specified customers.
     """
     reader = tqdm(
         csv.DictReader(file),
@@ -361,14 +384,14 @@ if __name__ == '__main__':
         '-e', '--events',
         default=DEFAULT_MIN_EVENTS,
         type=int,
-        help='minimum number of total events or purchases',
+        help='minimum number of distinct products in events',
         dest='min_events',
     )
     parser.add_argument(
         '-p', '--purchases',
         default=DEFAULT_MIN_PURCHASES,
         type=int,
-        help='minimum number of purchases',
+        help='minimum number of distinct purchased products',
         dest='min_purchases',
     )
     parser.add_argument(
