@@ -361,10 +361,16 @@ def encode_timestamp(timestamp):
     Encode date string into Unix timestamp.
     """
     date_string = timestamp.replace(' UTC', '')
-    date_object = datetime.datetime.strptime(
-        date_string,
-        '%Y-%m-%d %H:%M:%S.%f',
-    )
+    try:
+        date_object = datetime.datetime.strptime(
+            date_string,
+            '%Y-%m-%d %H:%M:%S.%f',
+        )
+    except ValueError:
+        date_object = datetime.datetime.strptime(
+            date_string,
+            '%Y-%m-%d %H:%M:%S',
+        )
     return date_object.timestamp()
 
 

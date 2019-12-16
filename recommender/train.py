@@ -28,8 +28,8 @@ from recommender.data import (
 
 DEFAULT_RECOMMENDATION_COUNT = 10
 DEFAULT_VIEW_WEIGHT = 0.2
-DEFAULT_EMBEDDING_SIZE = 256
-DEFAULT_ENCODER_SIZE = 256
+DEFAULT_EMBEDDING_SIZE = 1024
+DEFAULT_ENCODER_SIZE = 1024
 DEFAULT_BATCH_SIZE = 32
 
 
@@ -156,7 +156,7 @@ def get_customer_ids(
                     data_dir=data_dir,
                     line_cache=line_cache,
                 )
-                target_index = get_target_index(
+                target_index = get_max_index(
                     series=series,
                     target_count=target_count,
                 )
@@ -251,14 +251,18 @@ def seek_line(file, line, cache):
 
 
 def get_target_index(series, target_count):
+    max_index = get_max_index(series=series, target_count=target_count)
+    return random.randrange(1, max_index + 1)
+
+
+def get_max_index(series, target_count):
     product_set = set()
-    target_index = 0
+    max_index = 0
     for reverse_index, step in enumerate(reversed(series)):
-        if int(step['is_purchase']) == 1:
-            product_set.add(step['product_id'])
+        product_set.add(step['product_id'])
         if len(product_set) == target_count:
-            target_index = len(series) - reverse_index - 1
-    return target_index
+            max_index = len(series) - reverse_index - 1
+    return max_index
 
 
 def get_inputs(series, target_index):
@@ -338,25 +342,19 @@ def create_model(product_count, embedding_size, encoder_size):
         mask_zero=True,
     )
     embedding = embedding_layer(inputs=product_input)
-    embedding_dense = layers.Dense(
-        units=embedding_size,
-        activation='relu',
-        name='embedding_dense',
-    )
-    embedding_output = embedding_dense(inputs=embedding)
     masked_input = layers.Masking()(inputs=details_input)
-    encoder_input = layers.concatenate([embedding_output, masked_input])
+    encoder_input = layers.concatenate([embedding, masked_input])
     encoder = layers.Bidirectional(
         layer=layers.LSTM(units=encoder_size),
         name='bidi_lstm',
     )
     encoded_series = encoder(inputs=encoder_input)
-    dense_1 = layers.Dense(
+    dense = layers.Dense(
         units=encoder_size,
         activation='relu',
         name='dense',
     )
-    dense_output = dense_1(inputs=encoded_series)
+    dense_output = dense(inputs=encoded_series)
     dense_softmax = layers.Dense(
         units=product_count,
         activation='softmax',
