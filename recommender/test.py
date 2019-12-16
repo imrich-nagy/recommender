@@ -11,6 +11,11 @@ from recommender.train import (
     MaskedPrecision,
 )
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    from recommender.utils import tqdm_noop as tqdm
+
 
 def test(
     data_dir,
@@ -27,6 +32,7 @@ def test(
         product_count=product_count,
         view_weight=view_weight,
         subset=training_subset,
+        batch_size=1,
     )
     baseline = train_baseline(
         data=training_data,
@@ -50,10 +56,15 @@ def test(
 
 def train_baseline(data, steps, product_count):
     baseline = numpy.zeros(shape=product_count)
-    for batch in itertools.islice(data, steps):
+    batches = tqdm(
+        itertools.islice(data, steps),
+        desc='Training baseline model',
+        total=steps,
+        dynamic_ncols=True,
+    )
+    for batch in batches:
         inputs, outputs = batch
-        for output in outputs:
-            baseline += output
+        baseline += numpy.sum(outputs, axis=0)
     return baseline / numpy.sum(baseline)
 
 
