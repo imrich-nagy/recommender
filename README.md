@@ -134,6 +134,68 @@ The model was trained using the *Adam* optimizer with the loss function being th
 Two metrics were evaluated – precision and precision@5.
 
 
+## Parameters
+
+Both the data pre-processing and model training are highly parametrized to enable customization and fine-tuning of the solution.
+
+Pre-processing parameters:
+
+```
+  -e MIN_EVENTS, --events MIN_EVENTS
+                        minimum number of distinct products in events
+                        (default: 10)
+  -p MIN_PURCHASES, --purchases MIN_PURCHASES
+                        minimum number of distinct purchased products
+                        (default: 10)
+  -P MIN_PRODUCTS, --products MIN_PRODUCTS
+                        minimum number of product occurrences (default: 10)
+  -s NAME SIZE, --subset NAME SIZE
+                        specify additional subsets and their size (default:
+                        None)
+  -o OUTPUT_DIR, --output-dir OUTPUT_DIR
+                        processed data directory (default: None)
+```
+
+The final solution uses the following values:
+
+- `MIN_EVENTS`: 10
+- `MIN_PURCHASES`: 5
+- `MIN_PRODUCTS`: 20
+- validation subset: 0.1
+
+Training parameters:
+
+```
+  -e EMBEDDING_SIZE, --embedding EMBEDDING_SIZE
+                        product embedding size
+  -c ENCODER_SIZE, --encoder ENCODER_SIZE
+                        encoder vector size
+  -b BATCH_SIZE, --batch-size BATCH_SIZE
+                        training batch size
+  -r RECOMMENDATION_COUNT, --recommendations RECOMMENDATION_COUNT
+                        number of recommendations to make
+  -w VIEW_WEIGHT, --view-weight VIEW_WEIGHT
+                        relative importance of a view
+  -t TRAINING_SUBSET, --train-subset TRAINING_SUBSET
+                        training subset identifier
+  -v VALIDATION_SUBSET, --val-subset VALIDATION_SUBSET
+                        validation subset identifier
+  -m CHECKPOINT_DIR, --models-dir CHECKPOINT_DIR
+                        model checkpoint directory
+  -l LOG_DIR, --log-dir LOG_DIR
+                        training logs directory
+
+```
+
+The final solution uses the following values:
+
+- `EMBEDDING_SIZE`: 256
+- `ENCODER_SIZE`: 256
+- `BATCH_SIZE`: 32
+- `RECOMMENDATION_COUNT`: 5
+- `VIEW_WEIGHT`: 0.2
+
+
 ## Results
 
 Compared to a baseline solution (overall most popular products), the model performs better at both metrics.
