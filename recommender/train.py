@@ -99,23 +99,11 @@ def get_data(
         view_weight,
         subset=None,
         batch_size=1,
-        do_filter=True,
 ):
-    with open(os.path.join(data_dir, SERIES_INDEX_FILE), mode='r') as file:
-        series_index = {
-            row['customer_id']: (row['start_offset'], row['series_length'])
-            for row in csv.DictReader(file)
-        }
-    line_cache = {}
-    customer_ids = list(get_customer_ids(
-        series_index=series_index,
-        data_dir=data_dir,
-        target_count=target_count,
-        line_cache=line_cache,
-        subset=subset,
-        do_filter=do_filter,
-    ))
+    series_index = get_series_index(data_dir=data_dir)
+    customer_ids = list(get_customer_ids(data_dir=data_dir, subset=subset))
     print(f'Found {len(customer_ids)} IDs in subset "{subset}"')
+    line_cache = {}
     batches = get_batches(
         customer_ids=customer_ids,
         series_index=series_index,
@@ -130,16 +118,16 @@ def get_data(
     return batches, step_count
 
 
-def get_customer_ids(
-        series_index,
-        data_dir,
-        target_count,
-        line_cache,
-        subset=None,
-        do_filter=True,
-):
-    if do_filter:
-        print(f'Filtering customer IDs in subset "{subset}"...')
+def get_series_index(data_dir):
+    with open(os.path.join(data_dir, SERIES_INDEX_FILE), mode='r') as file:
+        series_index = {
+            row['customer_id']: (row['start_offset'], row['series_length'])
+            for row in csv.DictReader(file)
+        }
+    return series_index
+
+
+def get_customer_ids(data_dir, subset=None):
     if subset:
         filename = CUSTOMER_IDS_SUBSET_FILE.format(subset=subset)
     else:
@@ -147,21 +135,7 @@ def get_customer_ids(
     with open(os.path.join(data_dir, filename), mode='r') as file:
         for line in file:
             customer_id = line.rstrip('\n')
-            if not do_filter:
-                yield customer_id
-            else:
-                series = get_series(
-                    customer_id=customer_id,
-                    series_index=series_index,
-                    data_dir=data_dir,
-                    line_cache=line_cache,
-                )
-                target_index = get_max_index(
-                    series=series,
-                    target_count=target_count,
-                )
-                if target_index > 0:
-                    yield customer_id
+            yield customer_id
 
 
 def get_batches(

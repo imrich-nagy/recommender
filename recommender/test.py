@@ -14,6 +14,7 @@ from recommender.train import (
 
 def test(
     data_dir,
+    model_path=None,
     training_subset=None,
     testing_subset=None,
     recommendation_count=DEFAULT_RECOMMENDATION_COUNT,
@@ -26,7 +27,6 @@ def test(
         product_count=product_count,
         view_weight=view_weight,
         subset=training_subset,
-        do_filter=False,
     )
     baseline = train_baseline(
         data=training_data,
@@ -99,12 +99,18 @@ if __name__ == '__main__':
         dest='testing_subset',
     )
     parser.add_argument(
+        '-m', '--model-path',
+        help='model checkpoint path',
+        dest='model_path',
+    )
+    parser.add_argument(
         'data_dir',
         help='processed data directory'
     )
     args = parser.parse_args()
     test(
         data_dir=args.data_dir,
+        model_path=args.model_path,
         training_subset=args.training_subset,
         testing_subset=args.testing_subset,
         recommendation_count=args.recommendation_count,
