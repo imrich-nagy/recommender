@@ -231,12 +231,12 @@ def get_target_index(series, target_count):
 
 def get_max_index(series, target_count):
     product_set = set()
-    max_index = 0
     for reverse_index, step in enumerate(reversed(series)):
         product_set.add(step['product_id'])
         if len(product_set) == target_count:
             max_index = len(series) - reverse_index - 1
-    return max_index
+            return max(max_index, 1)
+    return 1
 
 
 def get_inputs(series, target_index):
