@@ -43,6 +43,7 @@ test:
 	pipenv run python -m recommender.test \
 		--train-subset train \
 		--test-subset test \
+		--model-path $(MODEL) \
 		./data/processed
 
 setup: $(CREATE_DIRS)

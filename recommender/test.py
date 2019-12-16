@@ -2,6 +2,7 @@ import argparse
 import itertools
 
 import numpy
+from tensorflow.keras.models import load_model
 
 from recommender.train import (
     DEFAULT_RECOMMENDATION_COUNT,
@@ -26,6 +27,19 @@ def test(
     view_weight=DEFAULT_VIEW_WEIGHT,
 ):
     product_count = get_product_count(data_dir=data_dir)
+    testing_data, testing_steps = get_data(
+        data_dir=data_dir,
+        target_count=recommendation_count,
+        product_count=product_count,
+        view_weight=view_weight,
+        subset=testing_subset,
+    )
+    if model_path is not None:
+        model = load_model(filepath=model_path)
+        model.evaluate_generator(
+            generator=testing_data,
+            steps_per_epoch=testing_steps,
+        )
     training_data, training_steps = get_data(
         data_dir=data_dir,
         target_count=recommendation_count,
@@ -38,13 +52,6 @@ def test(
         data=training_data,
         steps=training_steps,
         product_count=product_count,
-    )
-    testing_data, testing_steps = get_data(
-        data_dir=data_dir,
-        target_count=recommendation_count,
-        product_count=product_count,
-        view_weight=view_weight,
-        subset=testing_subset,
     )
     test_baseline(
         baseline=baseline,

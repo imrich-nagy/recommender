@@ -9,12 +9,12 @@ import traceback
 import itertools
 import warnings
 
+import numpy
 from tensorflow.keras import Input, layers, Model
 from tensorflow.keras.callbacks import Callback, CSVLogger, ModelCheckpoint
 from tensorflow.keras.metrics import Precision
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.utils import plot_model
-import numpy
 
 from recommender.data import (
     CUSTOMER_IDS_FILE,
@@ -28,8 +28,8 @@ from recommender.data import (
 
 DEFAULT_RECOMMENDATION_COUNT = 10
 DEFAULT_VIEW_WEIGHT = 0.2
-DEFAULT_EMBEDDING_SIZE = 1024
-DEFAULT_ENCODER_SIZE = 1024
+DEFAULT_EMBEDDING_SIZE = 256
+DEFAULT_ENCODER_SIZE = 256
 DEFAULT_BATCH_SIZE = 32
 
 
@@ -83,7 +83,7 @@ def train(
             validation_steps=validation_steps,
         )
     except KeyboardInterrupt:
-        print('Training stopped manually.')
+        print('\nTraining stopped manually.')
 
 
 def get_product_count(data_dir):
@@ -278,8 +278,8 @@ def get_model(
         product_count,
         embedding_size,
         encoder_size,
-        log_dir,
-        checkpoint_dir,
+        log_dir=None,
+        checkpoint_dir=None,
 ):
     model = create_model(
         product_count=product_count,
@@ -303,7 +303,8 @@ def get_model(
         checkpoint_dir=checkpoint_dir,
         top_k_metric=top_k_metric,
     )
-    save_model_diagram(model=model, time=time, log_dir=log_dir)
+    if log_dir:
+        save_model_diagram(model=model, time=time, log_dir=log_dir)
     return model, callbacks
 
 
