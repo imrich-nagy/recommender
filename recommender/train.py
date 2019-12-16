@@ -313,11 +313,9 @@ def create_model(product_count, embedding_size, encoder_size):
     embedding_layer = layers.Embedding(
         input_dim=product_count,
         output_dim=embedding_size,
-        mask_zero=True,
     )
     embedding = embedding_layer(inputs=product_input)
-    masked_input = layers.Masking()(inputs=details_input)
-    encoder_input = layers.concatenate([embedding, masked_input])
+    encoder_input = layers.concatenate([embedding, details_input])
     encoder = layers.Bidirectional(
         layer=layers.LSTM(units=encoder_size),
         name='bidi_lstm',
